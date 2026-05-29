@@ -24,6 +24,7 @@ type DreoClientOptions = {
     logger: DreoLogger;
     debugMode?: boolean;
     timeoutMs?: number;
+    onLegacyMessage?: (message: Record<string, any>) => void | Promise<void>;
 };
 export declare class DreoClient {
     private readonly email;
@@ -31,12 +32,17 @@ export declare class DreoClient {
     private readonly logger;
     private readonly debugMode;
     private readonly http;
+    private readonly onLegacyMessage?;
     private endpoint?;
     private accessToken?;
     private legacyEndpoint?;
     private legacyAccessToken?;
     private legacyRegion;
     private readonly legacyDeviceSerials;
+    private monitorWebSocket?;
+    private monitorStopped;
+    private monitorReconnectTimer?;
+    private monitorPingTimer?;
     constructor(options: DreoClientOptions);
     get tokenInfo(): {
         endpoint?: string;
@@ -45,6 +51,7 @@ export declare class DreoClient {
     };
     login(): Promise<void>;
     getDevices(): Promise<DreoRawDevice[]>;
+    stop(): void;
     getDeviceState(deviceSn: string): Promise<DreoRawState>;
     updateDeviceState(deviceSn: string, desired: Record<string, any>): Promise<Record<string, any>>;
     private requestWithReauth;
@@ -53,6 +60,7 @@ export declare class DreoClient {
     private getLegacyDeviceState;
     private sendLegacyWebSocketCommand;
     private sendLegacyWebSocketCommandOnce;
+    private startLegacyMonitor;
     private ensureLegacyAuthenticated;
     private legacyRequest;
     private ensureAuthenticated;

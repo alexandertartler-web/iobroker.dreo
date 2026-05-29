@@ -65,6 +65,20 @@ export class DreoDevice {
     return this.properties;
   }
 
+  public applyReportedUpdate(reported: Record<string, any>): void {
+    this.properties = {
+      ...this.properties,
+      ...reported,
+    };
+    this.rawState = {
+      ...this.rawState,
+      reported: {
+        ...(this.rawState.reported && typeof this.rawState.reported === "object" ? this.rawState.reported : {}),
+        ...reported,
+      },
+    };
+  }
+
   public getOnline(): boolean | undefined {
     return DreoDevice.extractOnline(this.rawState) ?? DreoDevice.extractOnline(this.properties) ?? this.info.online;
   }

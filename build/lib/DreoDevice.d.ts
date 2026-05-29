@@ -23,6 +23,7 @@ export declare class DreoDevice {
     refresh(): Promise<void>;
     getRawState(): DreoRawState;
     getProperties(): Record<string, any>;
+    applyReportedUpdate(reported: Record<string, any>): void;
     getOnline(): boolean | undefined;
     getCommonStates(): Record<string, DeviceStateValue>;
     supportsControl(control: string): boolean;

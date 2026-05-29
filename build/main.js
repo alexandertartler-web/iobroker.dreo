@@ -44,6 +44,7 @@ class DreoAdapter extends utils.Adapter {
     polling = false;
     retryAttempt = 0;
     managedDevices = new Map();
+    devicePathBySerial = new Map();
     constructor(options = {}) {
         super({
             ...options,
@@ -77,6 +78,7 @@ class DreoAdapter extends utils.Adapter {
             password: config.password,
             logger: this.clientLogger(),
             debugMode: !!config.debugMode,
+            onLegacyMessage: (message) => void this.onDreoRealtimeMessage(message),
         });
         this.subscribeStates("devices.*.control.*");
         await this.pollNow();
@@ -91,6 +93,7 @@ class DreoAdapter extends utils.Adapter {
                 const device = this.createDreoDevice(rawDevice);
                 const path = `devices.${this.sanitizeId(device.info.id)}`;
                 this.managedDevices.set(path, { path, device });
+                this.devicePathBySerial.set(device.info.serialNumber, path);
                 await device.refresh();
                 await this.createDeviceObjects(path, device);
                 await this.writeDeviceStates(path, device);
@@ -153,11 +156,29 @@ class DreoAdapter extends utils.Adapter {
                 clearTimeout(this.pollTimer);
                 this.pollTimer = undefined;
             }
+            this.client?.stop();
             callback();
         }
         catch {
             callback();
         }
+    }
+    async onDreoRealtimeMessage(message) {
+        const deviceSn = typeof message.devicesn === "string" ? message.devicesn : undefined;
+        const reported = message.reported && typeof message.reported === "object" && !Array.isArray(message.reported) ? message.reported : undefined;
+        if (!deviceSn || !reported)
+            return;
+        const path = this.devicePathBySerial.get(deviceSn);
+        if (!path) {
+            if (this.config.debugMode)
+                this.log.debug(`Ignoring Dreo realtime update for unknown device ${deviceSn}`);
+            return;
+        }
+        const managed = this.managedDevices.get(path);
+        if (!managed)
+            return;
+        managed.device.applyReportedUpdate(reported);
+        await this.writeDeviceStates(path, managed.device);
     }
     createDreoDevice(rawDevice) {
         const normalized = DreoDevice_1.DreoDevice.normalizeDevice(rawDevice);

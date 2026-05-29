@@ -42,6 +42,19 @@ class DreoDevice {
     getProperties() {
         return this.properties;
     }
+    applyReportedUpdate(reported) {
+        this.properties = {
+            ...this.properties,
+            ...reported,
+        };
+        this.rawState = {
+            ...this.rawState,
+            reported: {
+                ...(this.rawState.reported && typeof this.rawState.reported === "object" ? this.rawState.reported : {}),
+                ...reported,
+            },
+        };
+    }
     getOnline() {
         return DreoDevice.extractOnline(this.rawState) ?? DreoDevice.extractOnline(this.properties) ?? this.info.online;
     }

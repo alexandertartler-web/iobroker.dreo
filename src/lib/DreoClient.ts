@@ -41,6 +41,7 @@ type DreoClientOptions = {
   logger: DreoLogger;
   debugMode?: boolean;
   timeoutMs?: number;
+  onLegacyMessage?: (message: Record<string, any>) => void | Promise<void>;
 };
 
 const BASE_URL = "https://open-api-us.dreo-tech.com";
@@ -69,6 +70,7 @@ export class DreoClient {
   private readonly logger: DreoLogger;
   private readonly debugMode: boolean;
   private readonly http: AxiosInstance;
+  private readonly onLegacyMessage?: (message: Record<string, any>) => void | Promise<void>;
 
   private endpoint?: string;
   private accessToken?: string;
@@ -76,12 +78,17 @@ export class DreoClient {
   private legacyAccessToken?: string;
   private legacyRegion: "NA" | "EU" = "NA";
   private readonly legacyDeviceSerials = new Set<string>();
+  private monitorWebSocket?: WebSocket;
+  private monitorStopped = false;
+  private monitorReconnectTimer?: NodeJS.Timeout;
+  private monitorPingTimer?: NodeJS.Timeout;
 
   public constructor(options: DreoClientOptions) {
     this.email = options.email;
     this.password = options.password;
     this.logger = options.logger;
     this.debugMode = !!options.debugMode;
+    this.onLegacyMessage = options.onLegacyMessage;
     this.http = axios.create({
       timeout: options.timeoutMs ?? 10_000,
       validateStatus: () => true,
@@ -144,8 +151,25 @@ export class DreoClient {
       const serial = this.firstString(device, "deviceSn", "devicesn", "serialNumber", "serial_number", "sn");
       if (serial) this.legacyDeviceSerials.add(serial);
     }
+    this.startLegacyMonitor();
     this.debug(`Legacy app API returned ${legacyDevices.length} devices`);
     return legacyDevices;
+  }
+
+  public stop(): void {
+    this.monitorStopped = true;
+    if (this.monitorReconnectTimer) clearTimeout(this.monitorReconnectTimer);
+    if (this.monitorPingTimer) clearInterval(this.monitorPingTimer);
+    this.monitorReconnectTimer = undefined;
+    this.monitorPingTimer = undefined;
+    if (this.monitorWebSocket) {
+      try {
+        this.monitorWebSocket.close();
+      } catch {
+        // Ignore close errors during adapter shutdown.
+      }
+    }
+    this.monitorWebSocket = undefined;
   }
 
   public async getDeviceState(deviceSn: string): Promise<DreoRawState> {
@@ -344,6 +368,54 @@ export class DreoClient {
       ws.on("close", () => {
         if (!settled) finish(new DreoApiError("Dreo WebSocket closed before command ACK", { retryable: true }));
       });
+    });
+  }
+
+  private startLegacyMonitor(): void {
+    if (!this.onLegacyMessage || !this.legacyAccessToken || this.monitorStopped) return;
+    if (this.monitorWebSocket && (this.monitorWebSocket.readyState === WebSocket.OPEN || this.monitorWebSocket.readyState === WebSocket.CONNECTING)) return;
+
+    const region = this.legacyRegion === "EU" ? "eu" : "us";
+    const url = `wss://wsb-${region}.dreo-tech.com/websocket?accessToken=${encodeURIComponent(this.requireLegacyAccessToken())}&timestamp=${Date.now()}`;
+    this.debug(`Starting Dreo legacy WebSocket monitor for ${region}`);
+
+    const ws = new WebSocket(url);
+    this.monitorWebSocket = ws;
+
+    ws.on("open", () => {
+      this.debug("Dreo legacy WebSocket monitor connected");
+      if (this.monitorPingTimer) clearInterval(this.monitorPingTimer);
+      this.monitorPingTimer = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) ws.send("2");
+      }, 15_000);
+    });
+
+    ws.on("message", (data) => {
+      const raw = data.toString();
+      if (raw === "2" || raw === "3") return;
+      try {
+        const message = JSON.parse(raw) as Record<string, any>;
+        this.debugJson("Dreo legacy WebSocket monitor message", message);
+        void Promise.resolve(this.onLegacyMessage?.(message)).catch((error) => {
+          this.logger.warn(`Dreo WebSocket update callback failed: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      } catch {
+        this.debug(`Ignoring non-JSON Dreo monitor message: ${raw}`);
+      }
+    });
+
+    ws.on("error", (error) => {
+      this.logger.warn(`Dreo legacy WebSocket monitor error: ${error.message}`);
+    });
+
+    ws.on("close", () => {
+      if (this.monitorPingTimer) clearInterval(this.monitorPingTimer);
+      this.monitorPingTimer = undefined;
+      this.monitorWebSocket = undefined;
+      if (!this.monitorStopped) {
+        this.logger.warn("Dreo legacy WebSocket monitor closed; reconnecting in 10 seconds");
+        this.monitorReconnectTimer = setTimeout(() => this.startLegacyMonitor(), 10_000);
+      }
     });
   }
 

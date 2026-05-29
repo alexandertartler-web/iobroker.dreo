@@ -23,6 +23,7 @@ class DreoAdapter extends utils.Adapter {
   private polling = false;
   private retryAttempt = 0;
   private readonly managedDevices = new Map<string, ManagedDevice>();
+  private readonly devicePathBySerial = new Map<string, string>();
 
   public constructor(options: Partial<utils.AdapterOptions> = {}) {
     super({
@@ -61,6 +62,7 @@ class DreoAdapter extends utils.Adapter {
       password: config.password,
       logger: this.clientLogger(),
       debugMode: !!config.debugMode,
+      onLegacyMessage: (message) => void this.onDreoRealtimeMessage(message),
     });
 
     this.subscribeStates("devices.*.control.*");
@@ -78,6 +80,7 @@ class DreoAdapter extends utils.Adapter {
         const device = this.createDreoDevice(rawDevice);
         const path = `devices.${this.sanitizeId(device.info.id)}`;
         this.managedDevices.set(path, { path, device });
+        this.devicePathBySerial.set(device.info.serialNumber, path);
 
         await device.refresh();
         await this.createDeviceObjects(path, device);
@@ -144,10 +147,28 @@ class DreoAdapter extends utils.Adapter {
         clearTimeout(this.pollTimer);
         this.pollTimer = undefined;
       }
+      this.client?.stop();
       callback();
     } catch {
       callback();
     }
+  }
+
+  private async onDreoRealtimeMessage(message: Record<string, any>): Promise<void> {
+    const deviceSn = typeof message.devicesn === "string" ? message.devicesn : undefined;
+    const reported = message.reported && typeof message.reported === "object" && !Array.isArray(message.reported) ? message.reported as Record<string, any> : undefined;
+    if (!deviceSn || !reported) return;
+
+    const path = this.devicePathBySerial.get(deviceSn);
+    if (!path) {
+      if ((this.config as AdapterConfig).debugMode) this.log.debug(`Ignoring Dreo realtime update for unknown device ${deviceSn}`);
+      return;
+    }
+
+    const managed = this.managedDevices.get(path);
+    if (!managed) return;
+    managed.device.applyReportedUpdate(reported);
+    await this.writeDeviceStates(path, managed.device);
   }
 
   private createDreoDevice(rawDevice: DreoRawDevice): DreoDevice {
