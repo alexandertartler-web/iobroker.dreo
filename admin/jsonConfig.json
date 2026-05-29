@@ -33,6 +33,25 @@
       "xs": 12,
       "sm": 8
     },
+    "temperatureUnit": {
+      "type": "select",
+      "label": "Temperature unit",
+      "help": "Select the unit shown in ioBroker. Dreo heater API values are usually Fahrenheit and are converted when Celsius is selected.",
+      "newLine": true,
+      "xs": 12,
+      "sm": 4,
+      "options": [
+        {
+          "label": "Celsius",
+          "value": "celsius"
+        },
+        {
+          "label": "Fahrenheit",
+          "value": "fahrenheit"
+        }
+      ],
+      "default": "celsius"
+    },
     "debugMode": {
       "type": "checkbox",
       "label": "Debug mode",

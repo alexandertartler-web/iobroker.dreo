@@ -141,7 +141,8 @@ class DreoAdapter extends utils.Adapter {
                 await this.setStateQualityAware(`${devicePath}.control.${control}`, state.val);
                 return;
             }
-            await managed.device.setControl(control, state.val);
+            const commandValue = this.fromDisplayValue(control, state.val);
+            await managed.device.setControl(control, commandValue);
             await this.setStateQualityAware(`${devicePath}.control.${control}`, state.val);
             await managed.device.refresh();
             await this.writeDeviceStates(devicePath, managed.device);
@@ -220,14 +221,14 @@ class DreoAdapter extends utils.Adapter {
         await this.ensureState(`${path}.info.online`, "Online", "boolean", "indicator.connected", false);
         await this.ensureState(`${path}.info.rawData`, "Raw API data", "string", "json", false);
         await this.ensureState(`${path}.status.power`, "Power", "boolean", "switch.power", false);
-        await this.ensureState(`${path}.status.currentTemperature`, "Current temperature", "number", "value.temperature", false, "°");
-        await this.ensureState(`${path}.status.targetTemperature`, "Target temperature", "number", "level.temperature", false, "°");
+        await this.ensureState(`${path}.status.currentTemperature`, "Current temperature", "number", "value.temperature", false, this.temperatureUnitSymbol());
+        await this.ensureState(`${path}.status.targetTemperature`, "Target temperature", "number", "level.temperature", false, this.temperatureUnitSymbol());
         await this.ensureState(`${path}.status.mode`, "Mode", "string", "text", false);
         await this.ensureState(`${path}.status.fanSpeed`, "Fan speed / heat level", "number", "level", false);
         await this.ensureState(`${path}.status.oscillation`, "Oscillation", "mixed", "state", false);
         await this.ensureState(`${path}.status.timer`, "Timer", "number", "value.interval", false, "min");
         await this.ensureState(`${path}.control.power`, "Power", "boolean", "switch.power", true);
-        await this.ensureState(`${path}.control.targetTemperature`, "Target temperature", "number", "level.temperature", true, "°");
+        await this.ensureState(`${path}.control.targetTemperature`, "Target temperature", "number", "level.temperature", true, this.temperatureUnitSymbol());
         await this.ensureState(`${path}.control.mode`, "Mode", "string", "text", true, undefined, DreoHeater_1.HEATER_MODES);
         await this.ensureState(`${path}.control.fanSpeed`, "Fan speed / heat level", "number", "level", true);
         await this.ensureState(`${path}.control.oscillation`, "Oscillation", "mixed", "state", true);
@@ -235,13 +236,13 @@ class DreoAdapter extends utils.Adapter {
     async writeDeviceStates(path, device) {
         const states = device.getCommonStates();
         for (const [relativeId, value] of Object.entries(states)) {
-            await this.setStateQualityAware(`${path}.${relativeId}`, value);
+            await this.setStateQualityAware(`${path}.${relativeId}`, this.toDisplayValue(relativeId, value));
         }
-        await this.mirrorStatusToControl(path, "power", states["status.power"]);
-        await this.mirrorStatusToControl(path, "targetTemperature", states["status.targetTemperature"]);
-        await this.mirrorStatusToControl(path, "mode", states["status.mode"]);
-        await this.mirrorStatusToControl(path, "fanSpeed", states["status.fanSpeed"]);
-        await this.mirrorStatusToControl(path, "oscillation", states["status.oscillation"]);
+        await this.mirrorStatusToControl(path, "power", this.toDisplayValue("status.power", states["status.power"]));
+        await this.mirrorStatusToControl(path, "targetTemperature", this.toDisplayValue("status.targetTemperature", states["status.targetTemperature"]));
+        await this.mirrorStatusToControl(path, "mode", this.toDisplayValue("status.mode", states["status.mode"]));
+        await this.mirrorStatusToControl(path, "fanSpeed", this.toDisplayValue("status.fanSpeed", states["status.fanSpeed"]));
+        await this.mirrorStatusToControl(path, "oscillation", this.toDisplayValue("status.oscillation", states["status.oscillation"]));
     }
     async mirrorStatusToControl(path, control, value) {
         if (value === undefined)
@@ -300,6 +301,28 @@ class DreoAdapter extends utils.Adapter {
     }
     sanitizeId(id) {
         return id.replace(/[^a-zA-Z0-9_-]/g, "_");
+    }
+    toDisplayValue(relativeId, value) {
+        if (!this.useCelsius() || typeof value !== "number")
+            return value;
+        if (relativeId.endsWith("currentTemperature") || relativeId.endsWith("targetTemperature")) {
+            return Math.round(((value - 32) * 5 / 9) * 10) / 10;
+        }
+        return value;
+    }
+    fromDisplayValue(control, value) {
+        if (!this.useCelsius() || control !== "targetTemperature" || value === null || value === undefined)
+            return value;
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric))
+            return value;
+        return Math.round((numeric * 9 / 5) + 32);
+    }
+    useCelsius() {
+        return (this.config.temperatureUnit ?? "celsius") === "celsius";
+    }
+    temperatureUnitSymbol() {
+        return this.useCelsius() ? "°C" : "°F";
     }
     clientLogger() {
         return {

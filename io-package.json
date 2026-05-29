@@ -1,7 +1,7 @@
 {
   "common": {
     "name": "dreo",
-    "version": "0.0.5",
+    "version": "0.0.6",
     "title": "Dreo",
     "titleLang": {
       "en": "Dreo",
@@ -46,6 +46,7 @@
     "password": "",
     "pollingInterval": 60,
     "deviceFilter": "",
+    "temperatureUnit": "celsius",
     "debugMode": false
   },
   "objects": [],
