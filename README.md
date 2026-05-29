@@ -98,14 +98,6 @@ Create a Dreo adapter instance in ioBroker Admin, enter the Dreo credentials, ch
 
 Build checks are executed by GitHub Actions for each push and pull request.
 
-ioBroker runtime test:
-
-```bash
-cd /opt/iobroker
-iobroker logs dreo.0
-iobroker start dreo.0
-```
-
 Expected results:
 
 - `info.connection` becomes `true`

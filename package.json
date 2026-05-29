@@ -34,7 +34,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "watch": "tsc -w -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build",
+    "test:package": "npm pack --dry-run",
     "check": "npx @iobroker/repochecker https://github.com/alexandertartler-web/ioBroker.dreo main",
     "prepack": "npm run build"
   },
