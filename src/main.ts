@@ -77,8 +77,10 @@ class DreoAdapter extends utils.Adapter {
       const rawDevices = this.filterDevices(await this.client.getDevices());
 
       for (const rawDevice of rawDevices) {
-        const device = this.createDreoDevice(rawDevice);
-        const path = `devices.${this.sanitizeId(device.info.id)}`;
+        const nextDevice = this.createDreoDevice(rawDevice);
+        const path = `devices.${this.sanitizeId(nextDevice.info.id)}`;
+        const existing = this.managedDevices.get(path);
+        const device = existing?.device ?? nextDevice;
         this.managedDevices.set(path, { path, device });
         this.devicePathBySerial.set(device.info.serialNumber, path);
 

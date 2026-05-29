@@ -143,6 +143,12 @@ class DreoClient {
     }
     async getDeviceState(deviceSn) {
         await this.ensureAuthenticated();
+        if (this.legacyDeviceSerials.has(deviceSn)) {
+            const state = await this.getLegacyDeviceState(deviceSn);
+            if (Object.keys(state).length)
+                return state;
+            this.debug(`Legacy app API state for ${deviceSn} was empty; falling back to Open API state`);
+        }
         try {
             const payload = await this.requestWithReauth({
                 url: `${this.requireEndpoint()}${ENDPOINTS.deviceState}`,
@@ -259,6 +265,10 @@ class DreoClient {
         const data = this.unwrapData(payload);
         if (this.isObject(data) && this.isObject(data.mixed))
             return data.mixed;
+        if (this.isObject(data) && this.isObject(data.reported))
+            return data.reported;
+        if (this.isObject(data) && this.isObject(data.state))
+            return data.state;
         return this.isObject(data) ? data : {};
     }
     async sendLegacyWebSocketCommand(deviceSn, desired) {

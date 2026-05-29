@@ -174,6 +174,12 @@ export class DreoClient {
 
   public async getDeviceState(deviceSn: string): Promise<DreoRawState> {
     await this.ensureAuthenticated();
+    if (this.legacyDeviceSerials.has(deviceSn)) {
+      const state = await this.getLegacyDeviceState(deviceSn);
+      if (Object.keys(state).length) return state;
+      this.debug(`Legacy app API state for ${deviceSn} was empty; falling back to Open API state`);
+    }
+
     try {
       const payload = await this.requestWithReauth<any>({
         url: `${this.requireEndpoint()}${ENDPOINTS.deviceState}`,
@@ -293,6 +299,8 @@ export class DreoClient {
     });
     const data = this.unwrapData(payload);
     if (this.isObject(data) && this.isObject(data.mixed)) return data.mixed;
+    if (this.isObject(data) && this.isObject(data.reported)) return data.reported;
+    if (this.isObject(data) && this.isObject(data.state)) return data.state;
     return this.isObject(data) ? data : {};
   }
 
