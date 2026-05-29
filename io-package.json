@@ -15,6 +15,7 @@
     "keywords": ["dreo", "heater", "smart home", "cloud"],
     "license": "MIT",
     "platform": "Javascript/Node.js",
+    "main": "build/main.js",
     "mode": "daemon",
     "enabled": false,
     "materialize": true,
