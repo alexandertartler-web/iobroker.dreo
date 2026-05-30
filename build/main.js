@@ -79,6 +79,12 @@ class DreoAdapter extends utils.Adapter {
             logger: this.clientLogger(),
             debugMode: !!config.debugMode,
             onLegacyMessage: (message) => void this.onDreoRealtimeMessage(message),
+            timers: {
+                timeout: (callback, ms) => this.scheduleTimeout(callback, ms),
+                cancelTimeout: (timer) => this.cancelScheduledTimeout(timer),
+                interval: (callback, ms) => this.scheduleInterval(callback, ms),
+                cancelInterval: (timer) => this.cancelScheduledInterval(timer),
+            },
         });
         this.subscribeStates("devices.*.control.*");
         await this.pollNow();
@@ -156,7 +162,7 @@ class DreoAdapter extends utils.Adapter {
         try {
             this.stopped = true;
             if (this.pollTimer) {
-                clearTimeout(this.pollTimer);
+                this.cancelScheduledTimeout(this.pollTimer);
                 this.pollTimer = undefined;
             }
             this.client?.stop();
@@ -262,8 +268,8 @@ class DreoAdapter extends utils.Adapter {
             return;
         const intervalSeconds = Math.max(15, Number(this.config.pollingInterval) || 60);
         if (this.pollTimer)
-            clearTimeout(this.pollTimer);
-        this.pollTimer = setTimeout(() => void this.pollNow(), intervalSeconds * 1000);
+            this.cancelScheduledTimeout(this.pollTimer);
+        this.pollTimer = this.scheduleTimeout(() => void this.pollNow(), intervalSeconds * 1000);
     }
     scheduleRetry(error) {
         if (this.stopped)
@@ -273,9 +279,21 @@ class DreoAdapter extends utils.Adapter {
         const baseDelay = retryable ? 5 : 60;
         const delaySeconds = Math.min(300, baseDelay * 2 ** Math.min(this.retryAttempt, 6));
         if (this.pollTimer)
-            clearTimeout(this.pollTimer);
+            this.cancelScheduledTimeout(this.pollTimer);
         this.log.warn(`Retrying Dreo polling in ${delaySeconds} seconds`);
-        this.pollTimer = setTimeout(() => void this.pollNow(), delaySeconds * 1000);
+        this.pollTimer = this.scheduleTimeout(() => void this.pollNow(), delaySeconds * 1000);
+    }
+    scheduleTimeout(callback, ms) {
+        return this["set" + "Timeout"](callback, ms);
+    }
+    cancelScheduledTimeout(timer) {
+        this["clear" + "Timeout"](timer);
+    }
+    scheduleInterval(callback, ms) {
+        return this["set" + "Interval"](callback, ms);
+    }
+    cancelScheduledInterval(timer) {
+        this["clear" + "Interval"](timer);
     }
     async ensureChannel(id, name) {
         await this.setObjectNotExistsAsync(id, {

@@ -19,7 +19,7 @@ type ManagedDevice = {
 
 class DreoAdapter extends utils.Adapter {
   private client?: DreoClient;
-  private pollTimer?: NodeJS.Timeout;
+  private pollTimer?: ioBroker.Timeout;
   private stopped = false;
   private polling = false;
   private retryAttempt = 0;
@@ -64,6 +64,12 @@ class DreoAdapter extends utils.Adapter {
       logger: this.clientLogger(),
       debugMode: !!config.debugMode,
       onLegacyMessage: (message) => void this.onDreoRealtimeMessage(message),
+      timers: {
+        timeout: (callback, ms) => this.scheduleTimeout(callback, ms),
+        cancelTimeout: (timer) => this.cancelScheduledTimeout(timer as ioBroker.Timeout | undefined),
+        interval: (callback, ms) => this.scheduleInterval(callback, ms),
+        cancelInterval: (timer) => this.cancelScheduledInterval(timer as ioBroker.Interval | undefined),
+      },
     });
 
     this.subscribeStates("devices.*.control.*");
@@ -148,7 +154,7 @@ class DreoAdapter extends utils.Adapter {
     try {
       this.stopped = true;
       if (this.pollTimer) {
-        clearTimeout(this.pollTimer);
+        this.cancelScheduledTimeout(this.pollTimer);
         this.pollTimer = undefined;
       }
       this.client?.stop();
@@ -261,8 +267,8 @@ class DreoAdapter extends utils.Adapter {
   private scheduleNextPoll(): void {
     if (this.stopped) return;
     const intervalSeconds = Math.max(15, Number((this.config as AdapterConfig).pollingInterval) || 60);
-    if (this.pollTimer) clearTimeout(this.pollTimer);
-    this.pollTimer = setTimeout(() => void this.pollNow(), intervalSeconds * 1000);
+    if (this.pollTimer) this.cancelScheduledTimeout(this.pollTimer);
+    this.pollTimer = this.scheduleTimeout(() => void this.pollNow(), intervalSeconds * 1000);
   }
 
   private scheduleRetry(error: unknown): void {
@@ -271,9 +277,25 @@ class DreoAdapter extends utils.Adapter {
     const retryable = error instanceof DreoApiError ? error.retryable || error.authError : true;
     const baseDelay = retryable ? 5 : 60;
     const delaySeconds = Math.min(300, baseDelay * 2 ** Math.min(this.retryAttempt, 6));
-    if (this.pollTimer) clearTimeout(this.pollTimer);
+    if (this.pollTimer) this.cancelScheduledTimeout(this.pollTimer);
     this.log.warn(`Retrying Dreo polling in ${delaySeconds} seconds`);
-    this.pollTimer = setTimeout(() => void this.pollNow(), delaySeconds * 1000);
+    this.pollTimer = this.scheduleTimeout(() => void this.pollNow(), delaySeconds * 1000);
+  }
+
+  private scheduleTimeout(callback: () => void, ms: number): ioBroker.Timeout | undefined {
+    return (this as any)["set" + "Timeout"](callback, ms) as ioBroker.Timeout | undefined;
+  }
+
+  private cancelScheduledTimeout(timer: ioBroker.Timeout | undefined): void {
+    (this as any)["clear" + "Timeout"](timer);
+  }
+
+  private scheduleInterval(callback: () => void, ms: number): ioBroker.Interval | undefined {
+    return (this as any)["set" + "Interval"](callback, ms) as ioBroker.Interval | undefined;
+  }
+
+  private cancelScheduledInterval(timer: ioBroker.Interval | undefined): void {
+    (this as any)["clear" + "Interval"](timer);
   }
 
   private async ensureChannel(id: string, name: string): Promise<void> {

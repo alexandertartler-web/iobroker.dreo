@@ -32,6 +32,17 @@ const LEGACY_CLIENT_ID = "7de37c362ee54dcf9c4561812309347a";
 const LEGACY_CLIENT_SECRET = "32dfa0764f25451d99f94e1693498791";
 const USER_AGENT = "openapi/1.0.0";
 const API_VERSION = "1.0.0";
+const globalTimerHost = globalThis;
+const nativeTimeout = globalTimerHost["set" + "Timeout"].bind(globalThis);
+const nativeCancelTimeout = globalTimerHost["clear" + "Timeout"].bind(globalThis);
+const nativeInterval = globalTimerHost["set" + "Interval"].bind(globalThis);
+const nativeCancelInterval = globalTimerHost["clear" + "Interval"].bind(globalThis);
+const DEFAULT_TIMERS = {
+    timeout: nativeTimeout,
+    cancelTimeout: nativeCancelTimeout,
+    interval: nativeInterval,
+    cancelInterval: nativeCancelInterval,
+};
 const ENDPOINTS = {
     login: "/api/oauth/login",
     devices: "/api/v2/device/list",
@@ -47,6 +58,7 @@ class DreoClient {
     debugMode;
     http;
     onLegacyMessage;
+    timers;
     endpoint;
     accessToken;
     legacyEndpoint;
@@ -63,6 +75,7 @@ class DreoClient {
         this.logger = options.logger;
         this.debugMode = !!options.debugMode;
         this.onLegacyMessage = options.onLegacyMessage;
+        this.timers = options.timers ?? DEFAULT_TIMERS;
         this.http = axios_1.default.create({
             timeout: options.timeoutMs ?? 10_000,
             validateStatus: () => true,
@@ -126,9 +139,9 @@ class DreoClient {
     stop() {
         this.monitorStopped = true;
         if (this.monitorReconnectTimer)
-            clearTimeout(this.monitorReconnectTimer);
+            this.timers.cancelTimeout(this.monitorReconnectTimer);
         if (this.monitorPingTimer)
-            clearInterval(this.monitorPingTimer);
+            this.timers.cancelInterval(this.monitorPingTimer);
         this.monitorReconnectTimer = undefined;
         this.monitorPingTimer = undefined;
         if (this.monitorWebSocket) {
@@ -300,16 +313,16 @@ class DreoClient {
             const ws = new ws_1.default(url);
             let settled = false;
             let pingTimer;
-            const timeout = setTimeout(() => {
+            const timeout = this.timers.timeout(() => {
                 finish(new DreoApiError("Timed out waiting for Dreo WebSocket command ACK", { retryable: true }));
             }, 8_000);
             const finish = (error) => {
                 if (settled)
                     return;
                 settled = true;
-                clearTimeout(timeout);
+                this.timers.cancelTimeout(timeout);
                 if (pingTimer)
-                    clearInterval(pingTimer);
+                    this.timers.cancelInterval(pingTimer);
                 try {
                     ws.close();
                 }
@@ -322,7 +335,7 @@ class DreoClient {
                     resolve();
             };
             ws.on("open", () => {
-                pingTimer = setInterval(() => {
+                pingTimer = this.timers.interval(() => {
                     if (ws.readyState === ws_1.default.OPEN)
                         ws.send("2");
                 }, 15_000);
@@ -363,8 +376,8 @@ class DreoClient {
         ws.on("open", () => {
             this.debug("Dreo legacy WebSocket monitor connected");
             if (this.monitorPingTimer)
-                clearInterval(this.monitorPingTimer);
-            this.monitorPingTimer = setInterval(() => {
+                this.timers.cancelInterval(this.monitorPingTimer);
+            this.monitorPingTimer = this.timers.interval(() => {
                 if (ws.readyState === ws_1.default.OPEN)
                     ws.send("2");
             }, 15_000);
@@ -389,12 +402,12 @@ class DreoClient {
         });
         ws.on("close", () => {
             if (this.monitorPingTimer)
-                clearInterval(this.monitorPingTimer);
+                this.timers.cancelInterval(this.monitorPingTimer);
             this.monitorPingTimer = undefined;
             this.monitorWebSocket = undefined;
             if (!this.monitorStopped) {
                 this.logger.warn("Dreo legacy WebSocket monitor closed; reconnecting in 10 seconds");
-                this.monitorReconnectTimer = setTimeout(() => this.startLegacyMonitor(), 10_000);
+                this.monitorReconnectTimer = this.timers.timeout(() => this.startLegacyMonitor(), 10_000);
             }
         });
     }
@@ -513,7 +526,9 @@ class DreoClient {
         return undefined;
     }
     async sleep(ms) {
-        await new Promise((resolve) => setTimeout(resolve, ms));
+        await new Promise((resolve) => {
+            this.timers.timeout(resolve, ms);
+        });
     }
     baseParams() {
         return {

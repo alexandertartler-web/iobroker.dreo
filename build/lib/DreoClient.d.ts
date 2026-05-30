@@ -25,6 +25,14 @@ type DreoClientOptions = {
     debugMode?: boolean;
     timeoutMs?: number;
     onLegacyMessage?: (message: Record<string, any>) => void | Promise<void>;
+    timers?: DreoTimerTools;
+};
+type DreoTimer = unknown;
+type DreoTimerTools = {
+    timeout(callback: () => void, ms: number): DreoTimer;
+    cancelTimeout(timer: DreoTimer | undefined): void;
+    interval(callback: () => void, ms: number): DreoTimer;
+    cancelInterval(timer: DreoTimer | undefined): void;
 };
 export declare class DreoClient {
     private readonly email;
@@ -33,6 +41,7 @@ export declare class DreoClient {
     private readonly debugMode;
     private readonly http;
     private readonly onLegacyMessage?;
+    private readonly timers;
     private endpoint?;
     private accessToken?;
     private legacyEndpoint?;

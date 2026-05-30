@@ -1,6 +1,6 @@
 {
   "name": "iobroker.dreo",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "description": "ioBroker adapter for Dreo smart devices using the native Dreo Cloud API.",
   "author": "Alexander Tartler",
   "contributors": [

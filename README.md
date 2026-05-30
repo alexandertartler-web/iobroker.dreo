@@ -154,6 +154,10 @@ Dreo does not provide a public official API. This adapter uses behavior discover
 
 ## Changelog
 
+### 0.0.13
+
+- Switched polling and Dreo WebSocket timers to ioBroker-managed timer handling.
+
 ### 0.0.12
 
 - Added a native VIS 1 draggable Dreo heater widget.

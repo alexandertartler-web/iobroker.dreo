@@ -1,7 +1,7 @@
 {
   "common": {
     "name": "dreo",
-    "version": "0.0.12",
+    "version": "0.0.13",
     "titleLang": {
       "en": "Dreo",
       "de": "Dreo",
@@ -29,6 +29,19 @@
       "zh-cn": "Controls Dreo smart devices through the native Dreo Cloud API."
     },
     "news": {
+      "0.0.13": {
+        "en": "Use ioBroker-managed timers for polling and Dreo WebSocket handling.",
+        "de": "ioBroker-verwaltete Timer fuer Polling und Dreo-WebSocket-Verarbeitung verwendet.",
+        "ru": "Use ioBroker-managed timers for polling and Dreo WebSocket handling.",
+        "pt": "Use ioBroker-managed timers for polling and Dreo WebSocket handling.",
+        "nl": "Use ioBroker-managed timers for polling and Dreo WebSocket handling.",
+        "fr": "Use ioBroker-managed timers for polling and Dreo WebSocket handling.",
+        "it": "Use ioBroker-managed timers for polling and Dreo WebSocket handling.",
+        "es": "Use ioBroker-managed timers for polling and Dreo WebSocket handling.",
+        "pl": "Use ioBroker-managed timers for polling and Dreo WebSocket handling.",
+        "uk": "Use ioBroker-managed timers for polling and Dreo WebSocket handling.",
+        "zh-cn": "Use ioBroker-managed timers for polling and Dreo WebSocket handling."
+      },
       "0.0.12": {
         "en": "Added a native VIS 1 draggable Dreo heater widget.",
         "de": "Natives VIS 1 Drag-and-drop-Widget fuer Dreo-Heizgeraete hinzugefuegt.",

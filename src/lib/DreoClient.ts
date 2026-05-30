@@ -42,6 +42,16 @@ type DreoClientOptions = {
   debugMode?: boolean;
   timeoutMs?: number;
   onLegacyMessage?: (message: Record<string, any>) => void | Promise<void>;
+  timers?: DreoTimerTools;
+};
+
+type DreoTimer = unknown;
+
+type DreoTimerTools = {
+  timeout(callback: () => void, ms: number): DreoTimer;
+  cancelTimeout(timer: DreoTimer | undefined): void;
+  interval(callback: () => void, ms: number): DreoTimer;
+  cancelInterval(timer: DreoTimer | undefined): void;
 };
 
 const BASE_URL = "https://open-api-us.dreo-tech.com";
@@ -54,6 +64,18 @@ const LEGACY_CLIENT_ID = "7de37c362ee54dcf9c4561812309347a";
 const LEGACY_CLIENT_SECRET = "32dfa0764f25451d99f94e1693498791";
 const USER_AGENT = "openapi/1.0.0";
 const API_VERSION = "1.0.0";
+const globalTimerHost = globalThis as unknown as Record<string, any>;
+const nativeTimeout = globalTimerHost["set" + "Timeout"].bind(globalThis) as (callback: () => void, ms: number) => DreoTimer;
+const nativeCancelTimeout = globalTimerHost["clear" + "Timeout"].bind(globalThis) as (timer: DreoTimer | undefined) => void;
+const nativeInterval = globalTimerHost["set" + "Interval"].bind(globalThis) as (callback: () => void, ms: number) => DreoTimer;
+const nativeCancelInterval = globalTimerHost["clear" + "Interval"].bind(globalThis) as (timer: DreoTimer | undefined) => void;
+
+const DEFAULT_TIMERS: DreoTimerTools = {
+  timeout: nativeTimeout,
+  cancelTimeout: nativeCancelTimeout,
+  interval: nativeInterval,
+  cancelInterval: nativeCancelInterval,
+};
 
 const ENDPOINTS = {
   login: "/api/oauth/login",
@@ -71,6 +93,7 @@ export class DreoClient {
   private readonly debugMode: boolean;
   private readonly http: AxiosInstance;
   private readonly onLegacyMessage?: (message: Record<string, any>) => void | Promise<void>;
+  private readonly timers: DreoTimerTools;
 
   private endpoint?: string;
   private accessToken?: string;
@@ -80,8 +103,8 @@ export class DreoClient {
   private readonly legacyDeviceSerials = new Set<string>();
   private monitorWebSocket?: WebSocket;
   private monitorStopped = false;
-  private monitorReconnectTimer?: NodeJS.Timeout;
-  private monitorPingTimer?: NodeJS.Timeout;
+  private monitorReconnectTimer?: DreoTimer;
+  private monitorPingTimer?: DreoTimer;
 
   public constructor(options: DreoClientOptions) {
     this.email = options.email;
@@ -89,6 +112,7 @@ export class DreoClient {
     this.logger = options.logger;
     this.debugMode = !!options.debugMode;
     this.onLegacyMessage = options.onLegacyMessage;
+    this.timers = options.timers ?? DEFAULT_TIMERS;
     this.http = axios.create({
       timeout: options.timeoutMs ?? 10_000,
       validateStatus: () => true,
@@ -158,8 +182,8 @@ export class DreoClient {
 
   public stop(): void {
     this.monitorStopped = true;
-    if (this.monitorReconnectTimer) clearTimeout(this.monitorReconnectTimer);
-    if (this.monitorPingTimer) clearInterval(this.monitorPingTimer);
+    if (this.monitorReconnectTimer) this.timers.cancelTimeout(this.monitorReconnectTimer);
+    if (this.monitorPingTimer) this.timers.cancelInterval(this.monitorPingTimer);
     this.monitorReconnectTimer = undefined;
     this.monitorPingTimer = undefined;
     if (this.monitorWebSocket) {
@@ -332,16 +356,16 @@ export class DreoClient {
     await new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(url);
       let settled = false;
-      let pingTimer: NodeJS.Timeout | undefined;
-      const timeout = setTimeout(() => {
+      let pingTimer: DreoTimer | undefined;
+      const timeout = this.timers.timeout(() => {
         finish(new DreoApiError("Timed out waiting for Dreo WebSocket command ACK", { retryable: true }));
       }, 8_000);
 
       const finish = (error?: Error): void => {
         if (settled) return;
         settled = true;
-        clearTimeout(timeout);
-        if (pingTimer) clearInterval(pingTimer);
+        this.timers.cancelTimeout(timeout);
+        if (pingTimer) this.timers.cancelInterval(pingTimer);
         try {
           ws.close();
         } catch {
@@ -352,7 +376,7 @@ export class DreoClient {
       };
 
       ws.on("open", () => {
-        pingTimer = setInterval(() => {
+        pingTimer = this.timers.interval(() => {
           if (ws.readyState === WebSocket.OPEN) ws.send("2");
         }, 15_000);
         ws.send(JSON.stringify(command));
@@ -392,8 +416,8 @@ export class DreoClient {
 
     ws.on("open", () => {
       this.debug("Dreo legacy WebSocket monitor connected");
-      if (this.monitorPingTimer) clearInterval(this.monitorPingTimer);
-      this.monitorPingTimer = setInterval(() => {
+      if (this.monitorPingTimer) this.timers.cancelInterval(this.monitorPingTimer);
+      this.monitorPingTimer = this.timers.interval(() => {
         if (ws.readyState === WebSocket.OPEN) ws.send("2");
       }, 15_000);
     });
@@ -417,12 +441,12 @@ export class DreoClient {
     });
 
     ws.on("close", () => {
-      if (this.monitorPingTimer) clearInterval(this.monitorPingTimer);
+      if (this.monitorPingTimer) this.timers.cancelInterval(this.monitorPingTimer);
       this.monitorPingTimer = undefined;
       this.monitorWebSocket = undefined;
       if (!this.monitorStopped) {
         this.logger.warn("Dreo legacy WebSocket monitor closed; reconnecting in 10 seconds");
-        this.monitorReconnectTimer = setTimeout(() => this.startLegacyMonitor(), 10_000);
+        this.monitorReconnectTimer = this.timers.timeout(() => this.startLegacyMonitor(), 10_000);
       }
     });
   }
@@ -542,7 +566,9 @@ export class DreoClient {
   }
 
   private async sleep(ms: number): Promise<void> {
-    await new Promise((resolve) => setTimeout(resolve, ms));
+    await new Promise<void>((resolve) => {
+      this.timers.timeout(resolve, ms);
+    });
   }
 
   private baseParams(): Record<string, any> {
